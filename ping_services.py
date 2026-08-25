@@ -21,10 +21,27 @@ def read_lines(filepath):
                 lines.append(line)
     return lines
 
+def read_supabase_projects(filepath):
+    if not os.path.exists(filepath):
+        print(f"⚠️ Warning: File {filepath} not found.")
+        return []
+    projects = []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            url = parts[0]
+            table_name = parts[1] if len(parts) > 1 else None
+            # Remove duplicates based on URL
+            if not any(p['url'] == url for p in projects):
+                projects.append({'url': url, 'table_name': table_name})
+    return projects
+
 def make_request(url, headers=None, method='GET'):
     req = urllib.request.Request(url, headers=headers or {}, method=method)
     try:
-        # Prevent SSL verification issues on standard python installations
         import ssl
         context = ssl._create_unverified_context()
         with urllib.request.urlopen(req, timeout=TIMEOUT, context=context) as response:
@@ -53,7 +70,6 @@ def get_supabase_table(project_url, anon_key):
     try:
         spec = json.loads(body)
         paths = spec.get('paths', {})
-        # Find first path that starts with / and is not the root "/"
         tables = [p.lstrip('/') for p in paths.keys() if p != '/']
         if not tables:
             raise Exception("No tables exposed in the API schema.")
@@ -103,7 +119,7 @@ def main():
     print("--------------------------------\n")
     
     urls = read_lines("urls.txt")
-    supabase_urls = read_lines("supabase-projects.txt")
+    supabase_projects = read_supabase_projects("supabase-projects.txt")
     
     failures = 0
     
@@ -119,10 +135,12 @@ def main():
             failures += 1
             
     print("\nSupabase:")
-    if not supabase_urls:
+    if not supabase_projects:
         print("  (No Supabase projects configured in supabase-projects.txt)")
-    for url in supabase_urls:
-        # Extract project ID
+    for project in supabase_projects:
+        url = project['url']
+        configured_table = project['table_name']
+        
         match = re.search(r'https://([^.]+)\.supabase\.co', url)
         if not match:
             print(f"✗ {url}\n  ✗ Invalid Supabase URL format")
@@ -141,13 +159,31 @@ def main():
             failures += 1
             continue
             
-        # First verify API is reachable by calling OpenAPI root
-        # If this fails with 401/403, we can still parse table name if it returned schema,
-        # but let's just run get_supabase_table directly
         try:
-            table_name = get_supabase_table(url, anon_key)
-            # Query the table
-            success, status_code, message = check_supabase_db(url, anon_key, table_name)
+            # Determine which table to query
+            if configured_table:
+                table_name = configured_table
+                success, status_code, message = check_supabase_db(url, anon_key, table_name)
+            else:
+                try:
+                    # Attempt dynamic discovery via OpenAPI schema
+                    table_name = get_supabase_table(url, anon_key)
+                    success, status_code, message = check_supabase_db(url, anon_key, table_name)
+                except Exception as schema_err:
+                    # If schema endpoint requires a secret key, suggest specifying table name explicitly
+                    # But let's try a fallback table name 'users' first
+                    fallback_table = 'users'
+                    success, status_code, message = check_supabase_db(url, anon_key, fallback_table)
+                    if success:
+                        table_name = fallback_table
+                    else:
+                        # Construct a helpful error message explaining how to bypass with explicit table name
+                        raise Exception(
+                            f"Could not discover tables dynamically ({str(schema_err)}).\n"
+                            f"      To fix this, append an existing public table name in supabase-projects.txt next to the URL.\n"
+                            f"      Example: {url} users"
+                        )
+            
             if success:
                 print(f"✓ {url}")
                 print("  ✓ API reachable")
