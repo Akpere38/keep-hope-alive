@@ -1,6 +1,0 @@
-# One frontend URL per line. Lines starting with # are ignored.
-# Add new webapps here any time — no other file needs to change.
-
-https://stratusbank.vercel.app/
-https://postmark-lite-email-extractor.vercel.app/
-https://novaparcel.vercel.app/

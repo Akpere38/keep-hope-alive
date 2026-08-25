@@ -2,8 +2,8 @@ name: Keep Webapps and Supabase Projects Alive
 
 on:
   schedule:
-    # Runs every day at 07:00 UTC.
-    - cron: "0 7 * * *"
+    # Runs every day at 07:17 UTC (less congested minute).
+    - cron: "17 7 * * *"
   workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
 
 jobs:
@@ -13,35 +13,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Ping frontend URLs in urls.txt
-        run: |
-          echo "Pinging frontend URLs listed in urls.txt..."
-          while IFS= read -r url; do
-            [[ -z "$url" || "$url" =~ ^# ]] && continue
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-            status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$url" || echo "000")
+      - name: Run keep-alive script
+        env:
+          SUPABASE_ANON_KEY_KAJPURPJXWWZIRIQQAHS: ${{ secrets.SUPABASE_ANON_KEY_KAJPURPJXWWZIRIQQAHS }}
+          SUPABASE_ANON_KEY_TJOVZBTDJJEQZDIOTAET: ${{ secrets.SUPABASE_ANON_KEY_TJOVZBTDJJEQZDIOTAET }}
+          SUPABASE_ANON_KEY_PFKAOSXHNMPEJPQPTRFA: ${{ secrets.SUPABASE_ANON_KEY_PFKAOSXHNMPEJPQPTRFA }}
+        run: python ping_services.py
 
-            if [[ "$status" =~ ^2|3 ]]; then
-              echo "✅ $url -> $status"
-            else
-              echo "⚠️  $url -> $status"
-            fi
-          done < urls.txt
-
-      - name: Ping Supabase projects in supabase-projects.txt
-        run: |
-          echo "Pinging Supabase projects listed in supabase-projects.txt..."
-          while IFS= read -r url; do
-            [[ -z "$url" || "$url" =~ ^# ]] && continue
-
-            url="${url%/}"
-            endpoint="$url/rest/v1/"
-
-            status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$endpoint" || echo "000")
-
-            if [[ "$status" == "000" ]]; then
-              echo "❌ $url -> no response (project may be unreachable)"
-            else
-              echo "✅ $url -> reached (HTTP $status)"
-            fi
-          done < supabase-projects.txt
