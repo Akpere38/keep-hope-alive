@@ -3,6 +3,4 @@
 
 https://stratusbank.vercel.app/
 https://postmark-lite-email-extractor.vercel.app/
-https://novaparcel.vercel.app/
-https://novaparcel.onrender.com/
 https://bit-forge-oaqd.onrender.com/docs
